@@ -1,0 +1,24 @@
+ZECAY AI - ANDROID APK BUILD
+
+This ZIP contains:
+- Android Studio APK-ready project
+- ZECAY AI web application
+- Node/Express AI backend
+
+IMPORTANT:
+The Android wrapper currently points to:
+https://YOUR-ZECAY-AI-DOMAIN.example
+
+Before building, deploy the web folder to an HTTPS server and replace that URL
+inside:
+android/app/src/main/java/com/zecay/ai/MainActivity.java
+
+Then:
+1. Install Android Studio.
+2. Open the "android" folder.
+3. Sync Gradle.
+4. Build > Build APK(s).
+5. APK location:
+   android/app/build/outputs/apk/debug/app-debug.apk
+
+Keep your AI API key on the backend .env file. Never put it in Android frontend code.

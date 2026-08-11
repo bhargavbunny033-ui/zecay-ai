@@ -15,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@v6
 
       - name: Set up Java 17
         uses: actions/setup-java@v5
@@ -34,11 +34,15 @@ jobs:
           ZIP_FILE="$(find . -maxdepth 1 -type f -name 'ZECAY_AI_Android_APK_Ready*.zip' | head -n 1)"
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "APK project ZIP file not found"
+            echo "ZECAY AI ZIP file not found"
             exit 1
           fi
 
+          echo "ZIP found: $ZIP_FILE"
+
+          rm -rf extracted
           mkdir -p extracted
+
           unzip -q "$ZIP_FILE" -d extracted
 
           SETTINGS_FILE="$(find extracted -type f -path '*/android/settings.gradle' | head -n 1)"
@@ -53,11 +57,53 @@ jobs:
           echo "ANDROID_DIR=$ANDROID_DIR" >> "$GITHUB_ENV"
           echo "Android project found at: $ANDROID_DIR"
 
-      - name: Update Android Gradle Plugin
+      - name: Prepare Android project
         shell: bash
         run: |
-          sed -i "s/version '8.5.2'/version '8.6.0'/" "$ANDROID_DIR/build.gradle"
-          cat "$ANDROID_DIR/build.gradle"
+          cat > "$ANDROID_DIR/build.gradle" <<'EOF'
+          plugins {
+              id 'com.android.application' version '8.6.0' apply false
+          }
+          EOF
+
+          cat > "$ANDROID_DIR/app/build.gradle" <<'EOF'
+          plugins {
+              id 'com.android.application'
+          }
+
+          android {
+              namespace 'com.zecay.ai'
+              compileSdk 35
+
+              defaultConfig {
+                  applicationId 'com.zecay.ai'
+                  minSdk 23
+                  targetSdk 35
+                  versionCode 1
+                  versionName '1.0'
+              }
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+          }
+          EOF
+
+          cat > "$ANDROID_DIR/app/src/main/res/values/styles.xml" <<'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="AppTheme" parent="android:style/Theme.Material.Light.NoActionBar">
+                  <item name="android:fontFamily">sans</item>
+                  <item name="android:colorAccent">#5B4BDB</item>
+                  <item name="android:navigationBarColor">#FFFFFF</item>
+                  <item name="android:statusBarColor">#FFFFFF</item>
+                  <item name="android:windowLightStatusBar">true</item>
+              </style>
+          </resources>
+          EOF
+
+          echo "Android build files prepared successfully"
 
       - name: Install Android SDK 35
         shell: bash
@@ -68,8 +114,16 @@ jobs:
             SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
           fi
 
+          if [ -z "$SDKMANAGER" ]; then
+            echo "sdkmanager not found"
+            exit 1
+          fi
+
           yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
+
+          "$SDKMANAGER" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
 
       - name: Build APK
         shell: bash
@@ -77,9 +131,23 @@ jobs:
         run: |
           gradle --no-daemon clean assembleDebug
 
+      - name: Check APK
+        shell: bash
+        run: |
+          APK="$ANDROID_DIR/app/build/outputs/apk/debug/app-debug.apk"
+
+          if [ ! -f "$APK" ]; then
+            echo "APK was not generated"
+            exit 1
+          fi
+
+          echo "APK successfully generated"
+          ls -lh "$APK"
+
       - name: Upload ZECAY AI APK
         uses: actions/upload-artifact@v4
         with:
           name: ZECAY-AI-APK
           path: ${{ env.ANDROID_DIR }}/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          retention-days: 30
